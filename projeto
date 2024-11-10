@@ -1,1 +1,132 @@
+import typer
+import requests
+import json
+import csv
+import re
+from typing import Optional, List
+
+app = typer.Typer()
+
+API_URL = "https://api.itjobs.pt/job/list.json"
+API_KEY = "230c63de930638ddf1a3181f452389e6"
+headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36"
+}
+
+def export_csv(jobs, filename):
+    """Cria um arquivo CSV com os dados fornecidos, incluindo a descrição."""
+    with open(filename, "w", newline='', encoding="utf-8") as csvfile:
+        fieldnames = ["titulo", "empresa", "descrição", "data_publicação", "salário", "localização"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for job in jobs:
+            writer.writerow({
+                "titulo": job.get("title", "N/A"),
+                "empresa": job.get("company", {}).get("name", "N/A"),
+                "descrição": job.get("body", "N/A"),
+                "data_publicação": job.get("publishedAt", "N/A"),
+                "salário": job.get("wage", "N/A"),
+                "localização": ", ".join(loc.get("name", "") for loc in job.get("locations", []))
+            })
+    print(f"CSV '{filename}' criado com sucesso!")
+
+@app.command()
+def top(n: int):
+    """Lista os N empregos mais recentes publicados no itjobs.pt e opcionalmente salva em CSV."""
+    
+    parametros = {
+        "api_key": API_KEY,
+        "limit": n
+    }
+
+    response = requests.get(API_URL, headers=headers, params=parametros)
+    if response.status_code == 200:
+        jobs = response.json().get("results", [])
+        print(f"\nOs {n} empregos mais recentes:")
+        for job in jobs:
+            print(f"{job.get('title', 'N/A')}")
+        
+        csv_export = typer.confirm("Deseja exportar para CSV?")
+        if csv_export:
+            export_csv(jobs, "recent_jobs.csv")
+    else:
+        print(f"Erro: {response.status_code}")
+
+@app.command()
+def search(localidade: str, empresa: str, n: int):
+    """Lista todos os trabalhos full-time publicados por uma empresa numa localidade específica e opcionalmente salva em CSV."""
+    
+    parametros = {
+        "api_key": API_KEY,
+        "limit": n,
+        "tipo": "full-time",
+        "localidade": localidade,
+        "empresa": empresa
+    }
+
+    response = requests.get(API_URL, headers=headers, params=parametros)
+    if response.status_code == 200:
+        jobs = response.json().get("results", [])
+        print(json.dumps(jobs, indent=2))
+        
+        csv_export = typer.confirm("Deseja exportar para CSV?")
+        if csv_export:
+            export_csv(jobs, f"{empresa}_{localidade}_full_time_jobs.csv")
+    else:
+        print(f"Erro: {response.status_code}")
+
+@app.command()
+def salary(job_id: str):
+    """Extrai a informação relativa ao salário oferecido por um determinado job id."""
+    
+    parametros = {
+        "api_key": API_KEY,
+        "job_id": job_id
+    }
+
+    response = requests.get(f"https://api.itjobs.pt/job/get.json", headers=headers, params=parametros)
+    if response.status_code == 200:
+        job = response.json()
+        
+        # Tenta extrair o salário diretamente
+        wage = job.get("wage", None)
+        if wage is None:
+            # Tenta encontrar valores de salário na descrição usando expressões regulares
+            description = job.get("body", "")
+            wage_match = re.search(r'(?i)(sal(?:á|a)rio\s*[.:]?\s*\d+(?:[.,]\d+)*)', description)
+            if not wage_match:
+                wage_match = re.search(r'\b\d{1,3}(?:[.,]\d{3})+(?:[.,]\d{2})?\b', description)
+            if wage_match:
+                wage = wage_match.group(0)
+        
+        print(wage if wage else "Informação salarial não disponível.")
+    else:
+        print(f"Erro: {response.status_code}")
+
+@app.command()
+def skills(skills: List[str], data_inicial: str, data_final: str):
+    """Lista os trabalhos que requerem uma determinada lista de skills num período de tempo específico e opcionalmente salva em CSV."""
+    
+    parametros = {
+        "api_key": API_KEY,
+        "skills": ",".join(skills),
+        "data_inicial": data_inicial,
+        "data_final": data_final
+    }
+
+    response = requests.get(API_URL, headers=headers, params=parametros)
+    if response.status_code == 200:
+        jobs = response.json().get("results", [])
+        print(json.dumps(jobs, indent=2))
+        
+        csv_export = typer.confirm("Deseja exportar para CSV?")
+        if csv_export:
+            export_csv(jobs, "skills_jobs.csv")
+    else:
+        print(f"Erro: {response.status_code}")
+
+if __name__ == "__main__":
+    app()
+
+
 
