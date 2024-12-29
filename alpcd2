@@ -1,1 +1,25 @@
 
+a) obter informações sobre um jobID especifico utilizando a API do itjobs.pt e adicionar informações acerca da empresa que publicita o trabalho.
+Utilizando o website https://www.ambitionbox.com, adicione-as ao objeto JSON que ser ́a impresso no terminal1:
+• Rating geral da empresa 0-5;
+utilize este headers no pedido :{ ”User-Agent”: ”Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Fire- fox/98.0”, ”Accept”: ”text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8”, ”Accept-Language”: ”en-US,en;q=0.5”, ”Accept-Encoding”: ”gzip, deflate”, ”Connection”: ”keep-alive”, ”Upgrade-Insecure-Requests”: ”1”, ”Sec-Fetch-Dest”: ”document”, ”Sec-Fetch-Mode”: ”navigate”, ”Sec-Fetch-Site”: ”none”, ”Sec-Fetch-User”: ”?1”, ”Cache-Control”: ”max-age=0”} caso contr ́ario ser ́a bloqueado pelo website.
+ 1
+• Descri ̧c ̃ao da empresa;
+• Principais benef ́ıcios de trabalhar na empresa.
+Exemplo :
+     > python jobs.py get jobID
+     > {"id":125378,...,"rating":4,"ambition_box_description":"...","ambition_box_benefits:"..."}
+b) A CLI dever ́a permitir ao utilizador, a partir da lista de trabalhos, criar uma contagem de vagas por tipo/nome da posi ̧c ̃ao e por regi ̃ao.
+Deve produzir um ficheiro CSV com as seguintes colunas:
+• Zona;
+• Tipo de Trabalho; • No de vagas.
+Exemplo :
+> python jobs.py statistics zone
+> Ficheiro de exporta ̧c~ao criado com sucesso.
+c) A CLI dever ́a permitir ao utilizador, a partir da lista de trabalhos no textitwebsite (ambitionbox), recolher as principais skills (top10) pedidas para um determinado trabalho. Para cada skill encontrada, deve apresentar o seu nome e a contagem de ocorrˆencias. Por exemplo para data scientist, a url utilizando o website seria: https://www.ambitionbox.com/jobs/search?tag=data%20scientist.
+Deve imprimir a informa ̧c ̃ao no terminal em formato JSON. Exemplo :
+         > python jobs.py list skills "data scientist"
+         > [{skill:"python", count:1000},...]
+d) Explore pelo menos uma fonte de dados alternativa (website) que poderia ser adicionada para recolher as in- forma ̧c ̃oes pedidas acima.
+Justifique porque a escolheu e fa ̧ca a implementa ̧c ̃ao de pelos menos a al ́ınea a).
+e) Para cada uma das funcionalidades (a), (c) deve adicionar a funcionalidade de exportar para CSV a informa ̧c ̃ao com os campos relevantes. Para isso pode adicionar um argumento opcional a cada um dos comandos que permite indicar se pretende criar o CSV.
