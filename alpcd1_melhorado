@@ -1,0 +1,152 @@
+import typer
+import requests
+import json
+import csv
+import re
+from datetime import datetime
+from typing import Optional, List
+
+app = typer.Typer()
+
+URL = "https://api.itjobs.pt/job/list.json?api_key=7948cb253161333d9cd4634fa957cc86"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36"
+}
+
+# html
+def limpar_html(texto_html: str) -> str:
+    texto_limpo = re.sub(r"<[^>]+>", "", texto_html)
+    return texto_limpo.strip()
+
+# exportar CSV
+def export_to_csv(data: List[dict], filename: str):
+    try:
+        with open(filename, mode="w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=["id", "titulo", "empresa", "descrição", "data de publicação", "salário", "localização"])
+            writer.writeheader()
+            for job in data:
+                writer.writerow(job)
+        print(f"CSV '{filename}' criado com sucesso!")
+    except Exception as e:
+        print(f"Erro ao criar o CSV: {e}")
+
+@app.command()
+def listar_n_trabalhos(n: int, export_csv: Optional[str] = None):
+    response = requests.get(URL, headers=HEADERS)
+    jobs = response.json().get("results", [])
+    
+    # Ordenar por data de pub
+    ordenados = sorted(jobs, key=lambda job: datetime.strptime(job["publishedAt"], "%Y-%m-%d %H:%M:%S"), reverse=True)
+    mais_recentes = ordenados[:n]
+    
+    n_recentes = []
+    for job in mais_recentes:
+        n_recentes.append({
+            "id": job.get("id", "N/A"),
+            "titulo": job.get("title", "N/A"),
+            "empresa": job.get("company", {}).get("name", "N/A"),
+            "descrição": limpar_html(job.get("body", "N/A")),
+            "data de publicação": job.get("publishedAt", "N/A"),
+            "salário": job.get("wage", "N/A"),
+            "localização": "; ".join(loc.get("name", "N/A") for loc in job.get("locations", []))
+        })
+    
+    # terminal 
+    print("Trabalhos mais recentes:")
+    for job in mais_recentes:
+        print(f"- {job.get('title', 'N/A')} (Publicado em: {job.get('publishedAt', 'N/A')})")
+    
+    # CSV
+    if export_csv:
+        export_to_csv(n_recentes, export_csv)
+
+
+@app.command()
+def full_time_emp(company: str, location: str, limit: int, export_csv: Optional[str] = None):
+    response = requests.get(URL, headers=HEADERS)
+    jobs = response.json().get("results", [])
+
+    company = company.lower()
+    location = location.lower()
+    filtered_jobs = []
+
+    for job in jobs:
+        if job.get("company", {}).get("name", "").lower() == company:
+            if any(t["name"] == "Full-time" for t in job.get("types", [])) and \
+               any(l["name"].lower() == location for l in job.get("locations", [])):
+                filtered_jobs.append({
+                    "id": job["id"],
+                    "titulo": job["title"],
+                    "empresa": job["company"]["name"],
+                    "descrição": limpar_html(job["body"]),
+                    "data de publicação": job["publishedAt"],
+                    "salário": job.get("wage", "N/A"),
+                    "localização": "; ".join(loc["name"] for loc in job.get("locations", []))
+                })
+
+    # limite
+    filtered_jobs = filtered_jobs[:limit]
+     
+    if not filtered_jobs:
+        typer.echo(f"Não foram encontrados empregos do tipo 'Full-time' em '{location}' para a empresa '{company}'.")
+    else:
+        print(json.dumps(filtered_jobs, indent=2, ensure_ascii=False))
+
+    # CSV
+    if export_csv:
+        export_to_csv(filtered_jobs, export_csv)
+
+@app.command()
+def salary(job_id: int):
+    response = requests.get(URL, headers=HEADERS)
+    jobs = response.json().get("results", [])
+    job = next((j for j in jobs if j["id"] == job_id), None)
+
+    if not job:
+        typer.echo(f"Job ID {job_id} não encontrado.")
+        raise typer.Exit()
+    # salary no wage 
+    wage = job.get("wage")
+    if wage:
+        typer.echo(f"Salário encontrado: {wage}")
+    else:
+        # salary no body
+        body = job.get("body", "")
+        salaries = re.findall(r"(\€|\$|USD|EUR)?\s?\d+[,\.\d]*\s?(k|mil|m)?\s?(\€|\$|USD|EUR)?", body, re.IGNORECASE)
+        if salaries:
+            typer.echo(f"Salário(s) encontrado(s): {', '.join(' '.join(sal) for sal in salaries)}")
+        else:
+            typer.echo("Salário não encontrado em nenhum campo.")
+
+@app.command()
+def skills(skill: List[str], datainicial: str, datafinal: str, export_csv: Optional[str] = None):
+    response = requests.get(URL, headers=HEADERS)
+    jobs = response.json().get("results", [])
+    
+    datainicial = datetime.strptime(datainicial, "%Y-%m-%d")
+    datafinal = datetime.strptime(datafinal, "%Y-%m-%d")
+    filtered_jobs = []
+
+    for job in jobs:
+        published_at = datetime.strptime(job["publishedAt"].split(" ")[0], "%Y-%m-%d")
+        if datainicial <= published_at <= datafinal:
+            body_text = job.get("body", "").lower()
+            if all(s.lower() in body_text for s in skill):
+                filtered_jobs.append({
+                    "id": job["id"],
+                    "titulo": job["title"],
+                    "empresa": job["company"]["name"],
+                    "descrição": limpar_html(job["body"]),
+                    "data de publicação": job["publishedAt"],
+                    "salário": job.get("wage", "N/A"),
+                    "localização": "; ".join(loc["name"] for loc in job.get("locations", []))
+                })
+
+    print(json.dumps(filtered_jobs, indent=2, ensure_ascii=False))
+
+    # CSV
+    if export_csv:
+        export_to_csv(filtered_jobs, export_csv)
+
+if __name__ == "__main__":
+    app()
