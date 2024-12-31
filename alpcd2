@@ -1,20 +1,3 @@
-b) A CLI dever ́a permitir ao utilizador, a partir da lista de trabalhos, criar uma contagem de vagas por tipo/nome da posi ̧c ̃ao e por regi ̃ao.
-Deve produzir um ficheiro CSV com as seguintes colunas:
-• Zona;
-• Tipo de Trabalho; • No de vagas.
-Exemplo :
-> python jobs.py statistics zone
-> Ficheiro de exporta ̧c~ao criado com sucesso.
-
-c) A CLI dever ́a permitir ao utilizador, a partir da lista de trabalhos no textitwebsite (ambitionbox), recolher as principais skills (top10) pedidas para um determinado trabalho. Para cada skill encontrada, deve apresentar o seu nome e a contagem de ocorrˆencias. Por exemplo para data scientist, a url utilizando o website seria: https://www.ambitionbox.com/jobs/search?tag=data%20scientist.
-Deve imprimir a informa ̧c ̃ao no terminal em formato JSON. Exemplo :
-         > python jobs.py list skills "data scientist"
-         > [{skill:"python", count:1000},...] --- csv 
-
-d) Explore pelo menos uma fonte de dados alternativa (website) que poderia ser adicionada para recolher as in- forma ̧c ̃oes pedidas acima.
-Justifique porque a escolheu e fa ̧ca a implementa ̧c ̃ao de pelos menos a al ́ınea a).
-
-
 import typer
 import requests
 import json
@@ -23,23 +6,26 @@ import re
 from datetime import datetime
 from typing import Optional, List
 from bs4 import BeautifulSoup
+from typing import Annotated, Optional
+from collections import defaultdict, Counter
+
 
 app = typer.Typer()
 
 URL = "https://api.itjobs.pt/job/list.json?api_key=7948cb253161333d9cd4634fa957cc86"
-HEADERS= {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "none",
-    "Sec-Fetch-User": "?1",
-    "Cache-Control": "max-age=0"
-}
+HEADERS ={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:98.0) Gecko/20100101 Firefox/98.0", 
+               "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8", 
+               "Accept-Language": "en-US,en;q=0.5", 
+               "Accept-Encoding": "gzip, deflate", 
+               "Connection": "keep-alive", 
+               "Upgrade-Insecure-Requests": "1", 
+               "Sec-Fetch-Dest": "document", 
+               "Sec-Fetch-Mode": "navigate", 
+               "Sec-Fetch-Site": "none", 
+               "Sec-Fetch-User": "?1", 
+               "Cache-Control": "max-age=0"
+         }
+    
     
 # html
 def limpar_html(texto_html: str) -> str:
@@ -49,14 +35,24 @@ def limpar_html(texto_html: str) -> str:
 # exportar CSV
 def export_to_csv(data: List[dict], filename: str):
     try:
+        if not data:
+            print("Nenhum dado para exportar.")
+            return
+
+        # Usar as chaves do primeiro item como fieldnames
+        fieldnames = data[0].keys()
+
         with open(filename, mode="w", newline="", encoding="utf-8") as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=["id", "titulo", "empresa", "descrição", "data de publicação", "salário", "localização"])
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             writer.writeheader()
-            for job in data:
-                writer.writerow(job)
+            writer.writerows(data)
         print(f"CSV '{filename}' criado com sucesso!")
     except Exception as e:
         print(f"Erro ao criar o CSV: {e}")
+
+
+
+
 
 @app.command()
 def listar_n_trabalhos(n: int, export_csv: Optional[str] = None):
@@ -124,27 +120,36 @@ def full_time_emp(company: str, location: str, limit: int, export_csv: Optional[
     if export_csv:
         export_to_csv(filtered_jobs, export_csv)
 
+def extract_wage(job_data):
+    # 'wage'
+    wage = job_data.get("wage")
+    if wage:
+        return f"Salário encontrado no campo específico: {wage}"
+
+    #  'body' usando expressões regulares
+    body_text = job_data.get("body", "")
+    salary_patterns = re.findall(r"(\€|\$|USD|EUR)?\s?\d+\s?(€|\$|USD|EUR)?", body_text, re.IGNORECASE)
+
+    valid_salaries = [f"{pattern[0]}{pattern[1]}" if pattern[0] else f"{pattern[1]}" for pattern in salary_patterns if pattern[0] or pattern[1]]
+
+    if valid_salaries:
+        return f"Salário(s) encontrado(s) no campo 'body': {', '.join(valid_salaries)}"
+    else:
+        return "Salário não encontrado em nenhum campo."
+
 @app.command()
 def salary(job_id: int):
     response = requests.get(URL, headers=HEADERS)
     jobs = response.json().get("results", [])
-    job = next((j for j in jobs if j["id"] == job_id), None)
-
-    if not job:
+        
+    job_data = next((job for job in jobs if job["id"] == job_id), None)
+    
+    if job_data:
+        wage_info = extract_wage(job_data)
+        typer.echo(wage_info)
+    else:
         typer.echo(f"Job ID {job_id} não encontrado.")
         raise typer.Exit()
-    # salary no wage 
-    wage = job.get("wage")
-    if wage:
-        typer.echo(f"Salário encontrado: {wage}")
-    else:
-        # salary no body
-        body = job.get("body", "")
-        salaries = re.findall(r"(\€|\$|USD|EUR)?\s?\d+[,\.\d]*\s?(k|mil|m)?\s?(\€|\$|USD|EUR)?", body, re.IGNORECASE)
-        if salaries:
-            typer.echo(f"Salário(s) encontrado(s): {', '.join(' '.join(sal) for sal in salaries)}")
-        else:
-            typer.echo("Salário não encontrado em nenhum campo.")
 
 @app.command()
 def skills(skill: List[str], datainicial: str, datafinal: str, export_csv: Optional[str] = None):
@@ -265,6 +270,221 @@ def get_job_info(job_id: int, export_csv: Optional[str] = None):
             writer.writeheader()
             writer.writerow(enriched_data)
         typer.echo(f"Informações exportadas para o arquivo '{export_csv}'.")
+
+@app.command()
+def statistics():
+
+    job_counts = {}
+    page = 1
+    has_more_results = True
+
+    while has_more_results:
+        dados = obter_dados(page)
+        if dados is None or not dados.get("results"):
+            has_more_results = False
+            continue
+
+        #  resultados
+        for job in dados.get("results", []):
+            title = job["title"]
+            locations = ", ".join([loc["name"] for loc in job.get("locations", [])]) if job.get("locations") else "N/A"
+            key = (title, locations)
+
+            if key in job_counts:
+                job_counts[key] += 1
+            else:
+                job_counts[key] = 1
+
+        page += 1
+
+    # exportação
+    aggregated_data = [
+        {"titulo": title, "localização": location, "número de vagas": count}
+        for (title, location), count in job_counts.items()
+    ]
+
+    if aggregated_data:
+        #CSV
+        export_to_csv(aggregated_data, filename='numero_de_vagas.csv')
+    else:
+        print("Nenhum dado para exportar.")
+
+
+def skills_from_job(job_url: str):
+    response = requests.get(job_url, headers=HEADERS)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, 'html.parser')
+    skills_elements = soup.find_all('a', class_='body-medium chip') #skills
+    skills = [skill.get_text(strip=True).lower() for skill in skills_elements] 
+    return skills
+
+def job_urls(job_title: str):
+    job_title = job_title.replace(" ", "-") #limpar
+    url = f"https://www.ambitionbox.com/jobs/{job_title}-jobs-prf"
+    response = requests.get(url, headers=HEADERS)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, 'html.parser')
+    job_elements = soup.find_all('div', class_='jobsInfoCardCont') #links dos jobs
+    job_urls = [f"https://www.ambitionbox.com{job.find('a')['href']}" for job in job_elements] #urls dos jobs
+    return job_urls
+
+@app.command()
+def list_skills(job_title: str, export_csv: Optional[str] = None):
+    job_urls = job_urls(job_title)
+    all_skills = []
+    for url in job_urls: 
+        skills = skills_from_job(url)
+        all_skills.extend(skills)
+    skill_count = Counter(all_skills)
+    top_skills = skill_count.most_common(10)
+    skills = [{"skill": skill, "count": count} for skill, count in top_skills] #ordena 
+    print(json.dumps(skills, indent=4))
+    if export_csv:
+        exportar_csv(skills, filename=f'lista_skills_{job_title}.csv')
+####d))
+def fetch_indeed_data(company_name):
+    """Obtém informações sobre a empresa do site Indeed."""
+    url = f"https://pt.indeed.com/cmp/{company_name.replace(' ', '-').lower()}"
+    response = requests.get(url, headers=headers)
+    
+    # Verifica o status da requisição
+    if response.status_code != 200:
+        return {
+            "Rating da empresa (0 a 5)": "NA",
+            "Setor da empresa": "NA"
+        }
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Busca pela avaliação da empresa
+    rating_span = soup.find('span', {'aria-hidden': 'true'})
+    rating = rating_span.text if rating_span else "NA"
+    
+    # Busca pelo setor da empresa
+    setor_div = soup.find('div', class_='css-vjn8gb e1wnkr790')
+    setor = setor_div.text if setor_div else "NA"
+    
+    return {
+        "Rating da empresa (0 a 5)": rating,
+        "Setor da empresa": setor
+    }
+
+def fetch_ambitionbox_data(company_name):
+    """Obtém informações sobre a empresa do site AmbitionBox."""
+    url = f"https://www.ambitionbox.com/overview/{company_name.replace(' ', '-').lower()}-overview"
+    response = requests.get(url, headers=headers)
+    
+    # Verifica o status da requisição
+    if response.status_code != 200:
+        return {
+            "Rating da empresa (0 a 5)": "NA",
+            "Principais benefícios de trabalhar na empresa": "NA"
+        }
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Busca pela avaliação da empresa
+    rating_span = soup.select_one('div[data-testid="reviewRating"] span')
+    rating = rating_span.text if rating_span else "NA"
+    
+    # Busca pelos benefícios
+    category_ratings_div = soup.find('div', class_='css-175oi2r flex flex-col flex-1')
+    h4_elements = category_ratings_div.find_all('h4') if category_ratings_div else []
+    benefits = [h4.get_text() for h4 in h4_elements[:3]]
+    
+    return {
+        "Rating da empresa (0 a 5)": rating,
+        "Principais benefícios de trabalhar na empresa": benefits
+    }
+
+def fetch_hired_data(company_name):
+    """Obtém informações sobre a empresa do site SimplyHired."""
+    url = f"https://www.simplyhired.pt/company/{company_name.replace(' ', '-').lower()}"
+    response = requests.get(url, headers=headers)
+    
+    # Verifica o status da requisição
+    if response.status_code != 200:
+        return {
+            "Rating da empresa (0 a 5)": "NA",
+            "Setor da empresa": "NA",
+            "Principais benefícios de trabalhar na empresa": "NA"
+        }
+    
+    soup = BeautifulSoup(response.text, 'html.parser')
+    
+    # Busca pela avaliação da empresa
+    rating_span = soup.find('span', {'aria-hidden': 'true'})
+    rating = rating_span.text if rating_span else "NA"
+    
+    # Busca pelos benefícios
+    divisoes = soup.find_all('p', class_='chakra-text css-1tluwxv')
+    benefits = [divisao.get_text(strip=True).split('"')[-1] for divisao in divisoes[:3]]
+    
+    # Busca pelo setor
+    setor_div = soup.find(attrs={"data-testid": "cp-industry"}).find_next("p") if soup.find(attrs={"data-testid": "cp-industry"}) else None
+    setor = setor_div.text if setor_div else "NA"
+    
+    return {
+        "Rating da empresa (0 a 5)": rating,
+        "Setor da empresa": setor,
+        "Principais benefícios de trabalhar na empresa": benefits
+    }
+@app.command()
+def get_job_details(job_id: int, export_csv: bool = False, indeed: bool = False, simplyhired: bool = False):
+    """Retorna informações detalhadas sobre uma vaga específica pelo job_id."""
+    page = 1
+    job_details = None
+    url = f"https://www.simplyhired.pt/search?q=&l="  # URL de busca adaptada
+    while True:
+        response = requests.get(url, params={'page': page}, headers=HEADERS)
+        
+        # Verifica se a requisição foi bem-sucedida
+        if response.status_code != 200:
+            print(f"Erro {response.status_code}: Não foi possível acessar a página.")
+            break
+        
+        data = response.json()  # Supondo que a resposta seja em JSON
+        
+        # Verifica se a resposta contém resultados
+        if 'results' not in data or not data['results']:
+            print(f"Job com ID {job_id} não encontrado.")
+            break
+        
+        for job in data['results']:
+            if job['id'] == job_id:
+                job_details = {
+                    "Título": job.get('title', 'NA'),
+                    "Empresa": job.get('company', {}).get('name', 'NA'),
+                    "Descrição da vaga": job.get('body', 'NA'),
+                    "Data de publicação": job.get('publishedAt', 'NA'),
+                    "Localização": job['locations'][0].get('name', 'NA') if job.get('locations') else 'NA',
+                    "Salário": job.get('wage', 'NA'),
+                    "Descrição da empresa": job.get('company', {}).get('description', 'NA')
+                }
+                company_name = job_details["Empresa"]
+                if company_name != "NA":
+                    if indeed:
+                        indeed_data = fetch_indeed_data(company_name)
+                        job_details.update(indeed_data)
+                    elif simplyhired:
+                        hired_data = fetch_hired_data(company_name)
+                        job_details.update(hired_data)
+                    else:
+                        ambitionbox_data = fetch_ambitionbox_data(company_name)
+                        job_details.update(ambitionbox_data)
+                break
+        if job_details:
+            break
+        page += 1
+
+    if job_details:
+        print(json.dumps(job_details, indent=4, ensure_ascii=False))
+        if export_csv:
+            # Exemplo de função para exportar para CSV
+            exportar_csv([job_details], filename=f'job_{job_id}.csv')
+    else:
+        print(f"Detalhes do job com ID {job_id} não encontrados.")
+
 
 if __name__ == "__main__":
     app()
