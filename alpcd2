@@ -341,74 +341,7 @@ def list_skills(job_title: str, export_csv: Optional[str] = None):
     print(json.dumps(skills, indent=4))
     if export_csv:
         exportar_csv(skills, filename=f'lista_skills_{job_title}.csv')
-def indeed_data(job_id):
-    company_name = find_company_name(job_id)
-    if company_name is None:
-        print(f"Empresa não encontrada para o job ID {job_id}.")
-        return
-    
-    company_name1 = re.sub(r'\s+', '-', company_name)
-    print(company_name1)
-    url = f"https://pt.indeed.com/cmp/{company_name1}"
-    
-    response = requests.get(url, headers=HEADERS)
-    if response.status_code != 200: 
-        print(f"Website não encontrado para a empresa: {company_name}.")
-        return None
-    
-    soup = BeautifulSoup(response.text, 'lxml')
-    
-    return soup
 
-def indeed_data2(soup):
-    if soup is None:
-        return {
-            "overall_rating": "N/A",
-            "description": "Informações indisponíveis.",
-        }
-
-    body = soup.find('body')
-
-    if not body:
-        return {
-            "overall_rating": "N/A",
-            "description": "Informações indisponíveis.",
-        }
-    
-    # encontrar o overall rating
-    overall_rating = body.find('span', attrs={"aria-hidden":"true"}, class_="css-4f2law e1wnkr790").text  
-    overall_rating_1 = overall_rating.text if overall_rating else "N/A"
-
-    # encontrar a descrição da empresa
-    description_div = body.find('div', attrs={"data-testid": "less-text", "class": "css-9146s eu4oa1w0"})     # em alguns casos é more_text, alterar
-    if description_div:
-        paragraphs = description_div.find_all('p')
-        description = " ".join(p.text for p in paragraphs)
-    else:
-        description = "Informações indisponíveis."
-    
-    html_data = {
-        "overall_rating": overall_rating_1,
-        "description": description,        
-    }
-
- return html_data
-
-@app.command()
-def get_job_indeed(job_id: int, export_csv: Optional[str] = None):
-    api_data = get_api_content(job_id)
-    if api_data is None:
-        print(f"Job com ID {job_id} não encontrado na API.")
-        return
-    soup = get_html2(job_id)
-    html_content = get_html_content2(soup)
-
-    data = {**api_data, **html_content}
-    print(json.dumps(data, indent=4))
-    
-    # exportar dados para csv (opcional)
-    if export_csv:
-        export_to_csv(data, export_csv)
 
 if __name__ == "__main__":
     app()
